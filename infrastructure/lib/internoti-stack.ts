@@ -12,7 +12,7 @@ export class InternotiStack extends cdk.Stack {
     super(scope, id, props);
 
     // Create GitHub Actions role
-    const githubRole = new GitHubActionsRole(this, 'GitHubActions');
+    new GitHubActionsRole(this, 'GitHubActions');
 
     // Create ECR Repository
     const repository = new ecr.Repository(this, 'InternotiRepository', {
@@ -29,6 +29,7 @@ export class InternotiStack extends cdk.Stack {
       assumedBy: new iam.ServicePrincipal('ec2.amazonaws.com'),
       managedPolicies: [
         iam.ManagedPolicy.fromAwsManagedPolicyName('AmazonSSMManagedInstanceCore'),
+        iam.ManagedPolicy.fromAwsManagedPolicyName('AmazonSSMFullAccess'),
       ],
     });
 
