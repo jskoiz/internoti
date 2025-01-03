@@ -64,4 +64,4 @@ coverage/
 *.pfx
 *.password
 *secret*
-*credential*
+*credential*cline_docs/
