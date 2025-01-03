@@ -1,16 +1,21 @@
 import winston from 'winston';
+import path from 'path';
+import fs from 'fs';
 
-// Custom log levels
+// Custom log levels (lower number = higher priority)
+// When setting LOG_LEVEL, you'll only see messages of that level and higher priority
+// Example: LOG_LEVEL=warn will show only error (0) and warn (1) messages
+// Example: LOG_LEVEL=info will show error (0), warn (1), and info (2) messages
 const customLevels = {
   levels: {
-    error: 0,
-    warn: 1,
-    info: 2,
-    http: 3,
-    verbose: 4,
-    debug: 5,
-    silly: 6,
-    minimal: -1 // Most restrictive level, only critical errors
+    error: 0,    // Highest priority - always shown
+    warn: 1,     // Warnings and errors
+    info: 2,     // Info, warnings, and errors
+    http: 3,     // HTTP and above
+    verbose: 4,  // More detailed info
+    debug: 5,    // Debug information
+    silly: 6,    // Most verbose
+    minimal: -1  // Only critical errors
   },
   colors: {
     error: 'red',
@@ -24,10 +29,13 @@ const customLevels = {
   }
 };
 
+// Initialize Winston with custom levels and colors
+winston.addColors(customLevels.colors);
+
 // Enhanced replacer function to handle problematic content
 const safeJsonReplacer = () => {
   const seen = new WeakSet();
-  return (key: string, value: any) => {
+  return (key: string, value: unknown) => {
     // Skip symbol properties
     if (typeof key === 'symbol' || key.startsWith('Symbol(')) {
       return '[Symbol]';
@@ -51,24 +59,33 @@ const safeJsonReplacer = () => {
       }
 
       // For response objects, include more detailed error information
-      if (value.body !== undefined && value.statusCode !== undefined) {
-        if (value.body.error_code || value.body.description || value.body.error) {
+      const responseObj = value as { body?: unknown; statusCode?: number; headers?: unknown };
+      if (responseObj.body !== undefined && responseObj.statusCode !== undefined) {
+        const bodyObj = responseObj.body as { 
+          error_code?: string | number; 
+          description?: string; 
+          error?: string;
+          error_details?: unknown;
+          details?: unknown;
+        };
+        
+        if (bodyObj.error_code || bodyObj.description || bodyObj.error) {
           return {
-            statusCode: value.statusCode,
+            statusCode: responseObj.statusCode,
             error: {
-              code: value.body.error_code,
-              description: value.body.description,
-              error: value.body.error,
-              details: value.body.error_details || value.body.details
+              code: bodyObj.error_code,
+              description: bodyObj.description,
+              error: bodyObj.error,
+              details: bodyObj.error_details || bodyObj.details
             },
-            headers: value.headers, // Include headers for debugging
-            rawBody: typeof value.body === 'string' ? value.body.substring(0, 500) : undefined
+            headers: responseObj.headers,
+            rawBody: typeof responseObj.body === 'string' ? responseObj.body.substring(0, 500) : undefined
           };
         }
         return {
-          statusCode: value.statusCode,
+          statusCode: responseObj.statusCode,
           success: true,
-          headers: value.headers
+          headers: responseObj.headers
         };
       }
     }
@@ -76,10 +93,18 @@ const safeJsonReplacer = () => {
     // Enhanced string handling to expose problematic characters
     if (typeof value === 'string') {
       // Check for and highlight unescaped characters
-      const problematicChars = value.match(/[\u0000-\u001F\u007F-\u009F\u2028\u2029]/g);
-      if (problematicChars) {
-        return `[String with unescaped chars: ${value.replace(/[\u0000-\u001F\u007F-\u009F\u2028\u2029]/g, 
-          char => `\\u${char.charCodeAt(0).toString(16).padStart(4, '0')}`)}]`;
+      const isControlChar = (char: string): boolean => {
+        const code = char.charCodeAt(0);
+        return (code <= 0x1F) || (code >= 0x7F && code <= 0x9F) || code === 0x2028 || code === 0x2029;
+      };
+      
+      const chars = Array.from(value);
+      const hasProblematicChars = chars.some(isControlChar);
+      
+      if (hasProblematicChars) {
+        return `[String with unescaped chars: ${chars.map(char =>
+          isControlChar(char) ? `\\u${char.charCodeAt(0).toString(16).padStart(4, '0')}` : char
+        ).join('')}]`;
       }
     }
     
@@ -105,7 +130,7 @@ export interface NotificationLog {
   content: string;
   userId?: string;
   userName?: string;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
   formatting?: {
     originalLength: number;
     processedLength: number;
@@ -135,74 +160,92 @@ const formatNotificationLog = (notif: NotificationLog, timestamp?: string, level
   Metadata: ${notif.metadata ? JSON.stringify(notif.metadata, safeJsonReplacer(), 2) : 'None'}${formattingInfo}${processingSteps}`;
 };
 
-const logger = winston.createLogger({
-  level: process.env.LOG_LEVEL || 'debug', // Set default to debug for more verbosity
+// Create logs directory if it doesn't exist
+const logsDir = path.join(process.cwd(), 'logs');
+if (!fs.existsSync(logsDir)) {
+  fs.mkdirSync(logsDir, { recursive: true });
+}
+
+// Common format for both console and file transports
+const commonFormat = winston.format.printf(({ level, message, timestamp, ...metadata }: { 
+  level: string; 
+  message: unknown; 
+  timestamp?: string; 
+  [key: string]: unknown;
+}) => {
+  // Handle notification log objects
+  if (typeof message === 'object' && message && 'type' in message) {
+    return formatNotificationLog(message as NotificationLog, timestamp, level);
+  }
+  
+  // Enhanced error logging
+  if (message instanceof Error) {
+    return `${timestamp ? `${timestamp} ` : ''}${level}: ${message.stack}\nCause: ${message.cause ? JSON.stringify(message.cause, safeJsonReplacer(), 2) : 'None'}`;
+  }
+  
+  // Handle regular messages with enhanced object logging
+  const formattedMessage = typeof message === 'object' && message !== null
+    ? JSON.stringify(message, safeJsonReplacer(), 2)
+    : message;
+  
+  // Include additional metadata if present
+  const metadataStr = Object.keys(metadata).length ? 
+    `\n  Metadata: ${JSON.stringify(metadata, safeJsonReplacer(), 2)}` : '';
+  
+  return `${timestamp ? `${timestamp} ` : ''}${level}: ${formattedMessage}${metadataStr}`;
+});
+
+// Create base logger instance
+const baseLogger = winston.createLogger({
+  levels: customLevels.levels,
+  level: 'debug', // Default level, will be overridden by initLogger
   format: winston.format.combine(
     winston.format.timestamp(),
-    winston.format.printf(({ level, message, timestamp, ...metadata }: { level: string, message: any, timestamp?: string }) => {
-      // Handle notification log objects
-      if (typeof message === 'object' && message && 'type' in message) {
-        return formatNotificationLog(message as NotificationLog, timestamp, level);
-      }
-      
-      // Enhanced error logging
-      if (message instanceof Error) {
-        return `${timestamp} ${level}: ${message.stack}\nCause: ${message.cause ? JSON.stringify(message.cause, safeJsonReplacer(), 2) : 'None'}`;
-      }
-      
-      // Handle regular messages with enhanced object logging
-      const formattedMessage = typeof message === 'object' && message !== null
-        ? JSON.stringify(message, safeJsonReplacer(), 2) // Use pretty printing
-        : message;
-      
-      // Include additional metadata if present
-      const metadataStr = Object.keys(metadata).length ? 
-        `\n  Metadata: ${JSON.stringify(metadata, safeJsonReplacer(), 2)}` : '';
-      
-      return `${timestamp} ${level}: ${formattedMessage}${metadataStr}`;
-    })
+    commonFormat
   ),
   transports: [
     new winston.transports.Console({
       format: winston.format.combine(
-        winston.format.colorize(),
-        winston.format.printf(({ level, message, ...metadata }) => {
-          // Handle notification log objects
-          if (typeof message === 'object' && message && 'type' in message) {
-            return formatNotificationLog(message as NotificationLog, undefined, level);
-          }
-          
-          // Enhanced error logging
-          if (message instanceof Error) {
-            return `${level}: ${message.stack}\nCause: ${message.cause ? JSON.stringify(message.cause, safeJsonReplacer(), 2) : 'None'}`;
-          }
-          
-          // Handle regular messages with enhanced object logging
-          const formattedMessage = typeof message === 'object' && message !== null
-            ? JSON.stringify(message, safeJsonReplacer(), 2)
-            : message;
-          
-          // Include additional metadata if present
-          const metadataStr = Object.keys(metadata).length ? 
-            `\n  Metadata: ${JSON.stringify(metadata, safeJsonReplacer(), 2)}` : '';
-          
-          return `${level}: ${formattedMessage}${metadataStr}`;
-        })
+        winston.format.colorize({ all: true }),
+        commonFormat
       ),
     }),
     new winston.transports.File({ 
-      filename: 'error.log', 
-      level: 'error' 
+      filename: path.join(logsDir, 'error.log'),
+      level: 'error',
+      handleExceptions: true,
+      maxsize: 5242880,
+      maxFiles: 5,
     }),
     new winston.transports.File({ 
-      filename: 'combined.log' 
+      filename: path.join(logsDir, 'combined.log'),
+      handleExceptions: true,
+      maxsize: 5242880,
+      maxFiles: 5,
     }),
   ],
+  exitOnError: false
 });
 
-// Prevent logging in test environment
-if (process.env.NODE_ENV === 'test') {
-  logger.transports.forEach((t) => (t.silent = true));
-}
+// Function to initialize logger with environment settings
+export const initLogger = () => {
+  const level = process.env.LOG_LEVEL || 'debug';
+  console.error(`[Logger] Initializing with level: ${level}`);
+  
+  baseLogger.level = level;
 
-export default logger;
+  // Test log level filtering
+  if (process.env.NODE_ENV !== 'test') {
+    console.error('\n[Logger] Testing log levels:');
+    baseLogger.error('Test error message - should always show');
+    baseLogger.warn('Test warning message - shows if level is warn or lower');
+    baseLogger.info('Test info message - shows if level is info or lower');
+    baseLogger.debug('Test debug message - shows if level is debug or lower');
+    console.error(`[Logger] Current level: ${baseLogger.level} (lower number = higher priority)\n`);
+  }
+
+  return baseLogger;
+};
+
+// Export the logger
+export default baseLogger;

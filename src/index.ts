@@ -2,10 +2,13 @@ import { config } from 'dotenv';
 import { IntercomClient } from './intercom/intercomClient.js';
 import { TelegramBot } from './bot/telegramBot.js';
 import { WebhookServer } from './webhook/webhookServer.js';
-import logger from './utils/logger.js';
+import logger, { initLogger } from './utils/logger.js';
 
-// Load environment variables
+// Load environment variables first
 config();
+
+// Initialize logger with environment settings
+initLogger();
 
 async function main() {
   try {
