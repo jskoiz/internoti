@@ -4,3 +4,64 @@ dist/
 *.log
 .DS_Store
 coverage/
+
+# Runtime data
+*.pid
+*.seed
+*.pid.lock
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# Environment variables
+.env
+.env.*
+.env.local
+.env.*.local
+
+# SQLite database
+*.db
+*.sqlite
+*.sqlite3
+
+# AWS CDK
+cdk.context.json
+.cdk.staging/
+cdk.out/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# System Files
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.temp
+.cache/
+
+# Build output
+build/
+dist/
+out/
+
+# Test coverage
+coverage/
+.nyc_output/
+
+# Secrets - never commit these!
+*.pem
+*.key
+*.cert
+*.crt
+*.p12
+*.pfx
+*.password
+*secret*
+*credential*
