@@ -87,19 +87,3 @@
 3. Update dependencies regularly
 4. Rotate credentials periodically
 5. Review security group rules
-
-## Reporting Security Issues
-
-If you discover any security issues:
-1. Do not create a public GitHub issue
-2. Document the issue privately
-3. Contact the maintainers immediately
-4. Keep the issue confidential until resolved
-
-## Questions or Concerns?
-
-For any security-related questions or concerns:
-1. Review this security documentation
-2. Check AWS security best practices
-3. Consult with the team
-4. When in doubt, ask before committing

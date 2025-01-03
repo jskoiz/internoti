@@ -20,6 +20,7 @@ npm-debug.log*
 .env.*
 .env.local
 .env.*.local
+cline_docs/
 
 # SQLite database
 *.db
@@ -30,6 +31,7 @@ npm-debug.log*
 cdk.context.json
 .cdk.staging/
 cdk.out/
+.pem
 
 # IDE
 .idea/
