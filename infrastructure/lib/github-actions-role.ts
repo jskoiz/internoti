@@ -20,6 +20,9 @@ export class GitHubActionsRole extends Construct {
         StringLike: {
           'token.actions.githubusercontent.com:sub': 'repo:jskoiz/internoti:*',
         },
+        StringEquals: {
+          'token.actions.githubusercontent.com:aud': 'sts.amazonaws.com'
+        },
       }),
       description: 'Role used by GitHub Actions to deploy Internoti',
     });
