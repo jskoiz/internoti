@@ -14,12 +14,12 @@ export class InternotiStack extends cdk.Stack {
     // Create GitHub Actions role
     new GitHubActionsRole(this, 'GitHubActions');
 
-    // Create ECR Repository
-    const repository = new ecr.Repository(this, 'InternotiRepository', {
-      repositoryName: 'internoti',
-      removalPolicy: cdk.RemovalPolicy.RETAIN,
-      imageScanOnPush: true,
-    });
+    // Use existing ECR Repository
+    const repository = ecr.Repository.fromRepositoryName(
+      this,
+      'InternotiRepository',
+      'internoti'
+    );
 
     // Create VPC (using default VPC for simplicity)
     const vpc = ec2.Vpc.fromLookup(this, 'DefaultVPC', { isDefault: true });

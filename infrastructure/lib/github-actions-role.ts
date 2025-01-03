@@ -18,7 +18,7 @@ export class GitHubActionsRole extends Construct {
     this.role = new iam.Role(this, 'GitHubActionsRole', {
       assumedBy: new iam.WebIdentityPrincipal(provider.openIdConnectProviderArn, {
         StringLike: {
-          'token.actions.githubusercontent.com:sub': 'repo:*',
+          'token.actions.githubusercontent.com:sub': 'repo:jk/internoti:*',
         },
       }),
       description: 'Role used by GitHub Actions to deploy Internoti',
