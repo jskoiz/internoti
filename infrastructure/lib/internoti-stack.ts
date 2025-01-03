@@ -1,15 +1,25 @@
 import * as cdk from 'aws-cdk-lib';
 import * as ec2 from 'aws-cdk-lib/aws-ec2';
+import * as ecr from 'aws-cdk-lib/aws-ecr';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import { Construct } from 'constructs';
+import { GitHubActionsRole } from './github-actions-role';
 
-export interface InternotiStackProps extends cdk.StackProps {
-  repositoryUrl: string;
-}
+export interface InternotiStackProps extends cdk.StackProps {}
 
 export class InternotiStack extends cdk.Stack {
-  constructor(scope: Construct, id: string, props: InternotiStackProps) {
+  constructor(scope: Construct, id: string, props?: InternotiStackProps) {
     super(scope, id, props);
+
+    // Create GitHub Actions role
+    const githubRole = new GitHubActionsRole(this, 'GitHubActions');
+
+    // Create ECR Repository
+    const repository = new ecr.Repository(this, 'InternotiRepository', {
+      repositoryName: 'internoti',
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
+      imageScanOnPush: true,
+    });
 
     // Create VPC (using default VPC for simplicity)
     const vpc = ec2.Vpc.fromLookup(this, 'DefaultVPC', { isDefault: true });
@@ -32,6 +42,18 @@ export class InternotiStack extends cdk.Stack {
       resources: [
         `arn:aws:ssm:${this.region}:${this.account}:parameter/internoti/*`,
       ],
+    }));
+
+    // Add policy for ECR access
+    role.addToPolicy(new iam.PolicyStatement({
+      effect: iam.Effect.ALLOW,
+      actions: [
+        'ecr:GetAuthorizationToken',
+        'ecr:BatchCheckLayerAvailability',
+        'ecr:GetDownloadUrlForLayer',
+        'ecr:BatchGetImage',
+      ],
+      resources: [repository.repositoryArn],
     }));
 
     // Create security group
@@ -59,19 +81,15 @@ export class InternotiStack extends cdk.Stack {
     // Add user data script to set up the application
     instance.userData.addCommands(
       'yum update -y',
-      'yum install -y docker git',
+      'yum install -y docker aws-cli',
       'systemctl start docker',
       'systemctl enable docker',
       'usermod -a -G docker ec2-user',
-      'curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh | bash',
-      '. ~/.nvm/nvm.sh',
-      'nvm install 20',
-      'nvm use 20',
-      'cd /home/ec2-user',
-      `git clone ${props.repositoryUrl} internoti`,
-      'cd internoti',
-      'docker build -t internoti .',
-      'docker run -d --restart unless-stopped --name internoti internoti',
+      // Get ECR login token and login
+      `aws ecr get-login-password --region ${this.region} | docker login --username AWS --password-stdin ${this.account}.dkr.ecr.${this.region}.amazonaws.com`,
+      // Pull and run the container
+      `docker pull ${repository.repositoryUri}:latest || true`,
+      `docker run -d --restart unless-stopped --name internoti ${repository.repositoryUri}:latest || true`
     );
 
     // Output the instance ID
@@ -86,10 +104,10 @@ export class InternotiStack extends cdk.Stack {
       description: 'Public IP of the EC2 instance',
     });
 
-    // Output the repository URL used
-    new cdk.CfnOutput(this, 'RepositoryUrl', {
-      value: props.repositoryUrl,
-      description: 'Git repository URL used for deployment',
+    // Output the ECR repository URI
+    new cdk.CfnOutput(this, 'RepositoryUri', {
+      value: repository.repositoryUri,
+      description: 'URI of the ECR repository',
     });
   }
 }
