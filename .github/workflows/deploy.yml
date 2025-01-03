@@ -9,10 +9,6 @@ env:
   ECR_REPOSITORY: internoti
   EC2_INSTANCE_ID: i-06a1790b81c1b5a0b
 
-permissions:
-  id-token: write
-  contents: read
-
 jobs:
   deploy:
     name: Build and Deploy
@@ -37,9 +33,9 @@ jobs:
     - name: Configure AWS credentials
       uses: aws-actions/configure-aws-credentials@v4
       with:
-        role-to-assume: arn:aws:iam::715841341855:role/InternotiStack-GitHubActionsGitHubActionsRoleF6E4CD-3xgqe81OMKLl
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         aws-region: ${{ env.AWS_REGION }}
-        audience: sts.amazonaws.com
 
     - name: Login to Amazon ECR
       id: login-ecr
