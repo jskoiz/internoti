@@ -11,7 +11,7 @@ export class GitHubActionsRole extends Construct {
     // Create the OpenID Connect provider for GitHub Actions
     const provider = new iam.OpenIdConnectProvider(this, 'GitHubProvider', {
       url: 'https://token.actions.githubusercontent.com',
-      clientIds: ['sts.amazonaws.com'],
+      clientIds: ['sts.amazonaws.com', 'token.actions.githubusercontent.com'],
     });
 
     // Create the role for GitHub Actions
