@@ -78,49 +78,20 @@ export class InternotiStack extends cdk.Stack {
       'Allow SSH access from anywhere'
     );
 
-    // Create EC2 instance
-    const instance = new ec2.Instance(this, 'InternotiInstance', {
-      vpc,
-      vpcSubnets: {
-        subnetType: ec2.SubnetType.PUBLIC,
-      },
-      role,
-      securityGroup,
-      keyName: 'internoti',
-      instanceType: ec2.InstanceType.of(ec2.InstanceClass.T3, ec2.InstanceSize.MICRO),
-      machineImage: new ec2.AmazonLinuxImage({
-        generation: ec2.AmazonLinuxGeneration.AMAZON_LINUX_2023,
-      }),
-      userData: ec2.UserData.forLinux(),
-    });
+    // Add SSM policy for managing EC2 instances
+    role.addToPolicy(new iam.PolicyStatement({
+      effect: iam.Effect.ALLOW,
+      actions: [
+        'ssm:SendCommand',
+        'ssm:GetCommandInvocation'
+      ],
+      resources: [
+        `arn:aws:ssm:${this.region}:${this.account}:document/AWS-RunShellScript`,
+        `arn:aws:ec2:${this.region}:${this.account}:instance/*`
+      ]
+    }));
 
-    // Add user data script to set up the application
-    instance.userData.addCommands(
-      'yum update -y',
-      'yum install -y docker aws-cli',
-      'systemctl start docker',
-      'systemctl enable docker',
-      'usermod -a -G docker ec2-user',
-      // Get ECR login token and login
-      `aws ecr get-login-password --region ${this.region} | docker login --username AWS --password-stdin ${this.account}.dkr.ecr.${this.region}.amazonaws.com`,
-      // Pull and run the container
-      `docker pull ${repository.repositoryUri}:latest || true`,
-      `docker run -d --restart unless-stopped --name internoti ${repository.repositoryUri}:latest || true`
-    );
-
-    // Output the instance ID
-    new cdk.CfnOutput(this, 'InstanceId', {
-      value: instance.instanceId,
-      description: 'ID of the EC2 instance',
-    });
-
-    // Output the public IP
-    new cdk.CfnOutput(this, 'PublicIP', {
-      value: instance.instancePublicIp,
-      description: 'Public IP of the EC2 instance',
-    });
-
-    // Output the ECR repository URI
+    // Output the ECR repository URI only
     new cdk.CfnOutput(this, 'RepositoryUri', {
       value: repository.repositoryUri,
       description: 'URI of the ECR repository',
