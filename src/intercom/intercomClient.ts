@@ -37,6 +37,9 @@ interface IntercomMessage {
   type: 'user' | 'contact' | 'admin' | 'lead';
   message: string;
   timestamp: string;
+  metadata?: {
+    conversationId: string;
+  };
 }
 
 export class IntercomClient extends EventEmitter {
@@ -83,13 +86,16 @@ export class IntercomClient extends EventEmitter {
       const author = conversationMessage.author;
       
       const messageData: IntercomMessage = {
-        id: event.data.item.conversation_id || event.data.item.id,
-        name: author.name || `Anonymous (${author.type})`,
+        id: conversationMessage.id, // Use the unique message ID
+        name: this.formatUserName(author),
         userId: author.user_id || author.id,
         email: author.email || undefined,
         type: author.type,
         message: message,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
+        metadata: {
+          conversationId: event.data.item.conversation_id || event.data.item.id
+        }
       };
 
       // Determine if this is a new conversation or message
@@ -101,7 +107,8 @@ export class IntercomClient extends EventEmitter {
         userId: messageData.userId,
         userName: messageData.name,
         metadata: {
-          conversationId: messageData.id,
+          messageId: messageData.id,
+          conversationId: messageData.metadata?.conversationId,
           email: messageData.email,
           type: messageData.type,
           authorType: author.type,
@@ -125,5 +132,30 @@ export class IntercomClient extends EventEmitter {
   private stripHtml(html: string): string {
     if (!html) return '';
     return html.replace(/<[^>]*>/g, '');
+  }
+
+  /**
+   * Format user name with additional information
+   */
+  private formatUserName(author: IntercomAuthor): string {
+    const parts: string[] = [];
+
+    // Add name if available
+    if (author.name) {
+      parts.push(author.name);
+    }
+
+    // Add user ID for anonymous users or as additional info
+    const userId = author.user_id || author.external_id || author.id;
+    if (!author.name || author.type === 'lead') {
+      parts.push(`Anonymous ${author.type} (${userId})`);
+    }
+
+    // Add email if available
+    if (author.email) {
+      parts.push(`<${author.email}>`);
+    }
+
+    return parts.join(' ');
   }
 }

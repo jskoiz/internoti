@@ -1,34 +1,75 @@
 import { sanitizeIntercomMessage } from '../utils/sanitizer.js';
-import { ChatMessage, NotificationType } from '../types/telegram.js';
+import { ChatMessage, NotificationType, FormattedMessage } from '../types/telegram.js';
 import { TELEGRAM_CONFIG } from '../config/telegram.js';
 import logger from '../utils/logger.js';
 
 export class MessageFormatter {
   /**
-   * Formats an Intercom chat message for Telegram using the sanitizer
+   * Escapes special characters for Telegram's MarkdownV2 format
+   */
+  public static escapeMarkdown(text: string): string {
+    // Escape special characters for MarkdownV2
+    return text.replace(/[_*[\]()~`>#+=|{}.!-]/g, '\\$&');
+  }
+
+  /**
+   * Formats a system message for Telegram
+   */
+  public static formatSystemMessage(message: string): FormattedMessage {
+    const icon = this.escapeMarkdown('🤖');
+    const type = this.escapeMarkdown('System:');
+    const content = this.escapeMarkdown(message);
+    return {
+      text: `${icon} *${type}* ${content}`,
+      reply_markup: undefined
+    };
+  }
+
+  /**
+   * Formats an Intercom chat message for Telegram
    */
   static formatMessage(
     chat: ChatMessage,
     notificationType: NotificationType
-  ): string {
+  ): FormattedMessage {
     try {
-      // Use the sanitizer to process the message
+      // Use the sanitizer to process the message (basic cleanup only)
       const sanitized = sanitizeIntercomMessage(chat);
 
-      // Get the appropriate icon
-      const icon = this.getNotificationIcon(notificationType);
+      // Get the appropriate icon and escape it
+      const icon = this.escapeMarkdown(this.getNotificationIcon(notificationType));
       
-      // Prepare the notification type with proper escaping
-      const type = notificationType.toString().replace(/_/g, '\\_');
+      // Prepare the notification type
+      const type = this.escapeMarkdown(notificationType.toString().replace(/_/g, ' '));
 
-      // Build message with sanitized content
-      const formattedMessage = [
-        `${icon} *${type}*`,
-        `*Name:* ${sanitized.userName}`,
-        `*Message:* ${sanitized.messageBody}`,
-        `*Time:* ${sanitized.timestamp}`,
-        `*View:* ${sanitized.inboxUrl}`
-      ].join('\n');
+      // Escape all message components for MarkdownV2
+      const userName = this.escapeMarkdown(sanitized.userName);
+      const messageBody = this.escapeMarkdown(sanitized.messageBody);
+      const formattedTime = this.escapeMarkdown(sanitized.timestamp.formatted);
+      const timeAgo = this.escapeMarkdown(sanitized.timestamp.timeAgo);
+
+      // Get color based on notification type
+      const colorPrefix = notificationType === NotificationType.NEW_CONVERSATION ? '🟣' : '🔵';
+
+      // Build formatted message object
+      const formattedMessage: FormattedMessage = {
+        text: [
+          `${colorPrefix} ${icon} *${type}*`,
+          `_${formattedTime} \\(${timeAgo}\\)_`,
+          '',
+          `*Name:*`,
+          userName,
+          '',
+          `*Message:*`,
+          messageBody
+        ].join('\n'),
+        reply_markup: {
+          inline_keyboard: [[{
+            text: '👁️ View in Intercom',
+            url: sanitized.inboxUrl
+          }]]
+        }
+      };
 
       logger.info('Message formatted with sanitizer', {
         chatId: sanitized.rawContent.id,
@@ -69,21 +110,12 @@ export class MessageFormatter {
    * Extracts notification type from a formatted message
    */
   static extractNotificationType(message: string): NotificationType | 'UNKNOWN' {
-    const match = message.match(/\*(NEW_CONVERSATION|NEW_MESSAGE|SYSTEM)\*/);
-    return match ? (match[1] as NotificationType) : 'UNKNOWN';
-  }
-
-  /**
-   * Validates message format and checks for unescaped characters
-   */
-  static validateMessageFormat(message: string): boolean {
-    const containsUnescapedChars = /[_*[\]()~`>#+=|{}.!-]/.test(message);
-    if (containsUnescapedChars) {
-      logger.warn('Message contains potentially unescaped characters', {
-        messagePreview: message.substring(0, 100)
-      });
-      return false;
-    }
-    return true;
+    // Handle escaped underscores in the message with new format
+    const match = message.match(/[🟣🔵] [💬🆕🤖] \*(NEW[ _]CONVERSATION|NEW[ _]MESSAGE|SYSTEM)\*/u);
+    if (!match) return 'UNKNOWN';
+    
+    // Remove escaping from the matched type
+    const type = match[1].replace(/[ _]/g, '_');
+    return type as NotificationType;
   }
 }

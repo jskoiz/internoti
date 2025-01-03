@@ -48,11 +48,32 @@ export class WebhookServer extends EventEmitter {
                   });
 
                   if (event.type === 'notification_event') {
-                    // Extract the conversation message
+                    // Handle both new conversations and conversation parts
+                    const source = event.data?.item?.source;
                     const conversationParts = event.data?.item?.conversation_parts?.conversation_parts;
                     const latestMessage = conversationParts?.[0];
-                    
-                    if (latestMessage) {
+
+                    // For new conversations, use source
+                    if (source && event.topic === 'conversation.user.created') {
+                      this.emit('webhook_event', {
+                        type: event.type,
+                        topic: event.topic,
+                        data: {
+                          item: {
+                            type: event.data.item.type,
+                            id: event.data.item.id,
+                            conversation_message: {
+                              type: 'conversation',
+                              id: event.data.item.id,
+                              body: source.body,
+                              author: source.author
+                            }
+                          }
+                        }
+                      });
+                    }
+                    // For conversation parts, use the latest message
+                    else if (latestMessage) {
                       this.emit('webhook_event', {
                         type: event.type,
                         topic: event.topic,

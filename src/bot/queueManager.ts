@@ -1,8 +1,9 @@
 import TelegramBot from 'node-telegram-bot-api';
-import { QueueItem } from '../types/telegram.js';
+import { QueueItem, ChatMessage, FormattedMessage } from '../types/telegram.js';
 import { TELEGRAM_CONFIG } from '../config/telegram.js';
 import { MessageFormatter } from './messageFormatter.js';
 import logger from '../utils/logger.js';
+import { messageStore } from '../db/messageStore.js';
 
 export class QueueManager {
   private messageQueue: QueueItem[] = [];
@@ -18,23 +19,31 @@ export class QueueManager {
   /**
    * Queue a message for sending
    */
-  async queueMessage(message: string): Promise<void> {
+  async queueMessage(formattedMessage: FormattedMessage, chatMessage: ChatMessage): Promise<void> {
     try {
-      const notificationType = MessageFormatter.extractNotificationType(message);
+      const notificationType = MessageFormatter.extractNotificationType(formattedMessage.text);
       
-      // Validate message format before queueing
-      MessageFormatter.validateMessageFormat(message);
+      // Check if message was already sent
+      if (messageStore.hasBeenSent(chatMessage.id)) {
+        logger.info('Skipping duplicate message', {
+          messageId: chatMessage.id,
+          notificationType
+        });
+        return;
+      }
       
       this.messageQueue.push({
-        message,
+        message: formattedMessage,
+        messageId: chatMessage.id,
+        conversationId: chatMessage.metadata?.conversationId,
         retryCount: 0,
         metadata: { notificationType }
       });
       
       logger.info('Message queued', {
+        messageId: chatMessage.id,
         notificationType,
-        queueLength: this.messageQueue.length,
-        messageLength: message.length
+        queueLength: this.messageQueue.length
       });
       
       if (!this.processingQueue) {
@@ -43,7 +52,7 @@ export class QueueManager {
     } catch (error) {
       logger.error('Failed to queue message', {
         error: error instanceof Error ? error.message : 'Unknown error',
-        messageLength: message.length
+        messageId: chatMessage.id
       });
       throw error;
     }
@@ -85,7 +94,7 @@ export class QueueManager {
         }
 
         try {
-          await this.sendNotification(item.message);
+          await this.sendNotification(item);
           this.messageQueue.shift(); // Remove successfully sent message
           // Wait between messages to respect rate limits
           await new Promise(resolve => setTimeout(resolve, TELEGRAM_CONFIG.RETRY_DELAY));
@@ -109,7 +118,7 @@ export class QueueManager {
               logger.error('Message formatting error', {
                 error: error.message,
                 notificationType: item.metadata.notificationType,
-                messagePreview: item.message.substring(0, 100)
+                messageId: item.messageId
               });
               this.messageQueue.shift();
             } else {
@@ -119,6 +128,7 @@ export class QueueManager {
                 logger.error(`Failed to send message after ${TELEGRAM_CONFIG.MAX_RETRIES} retries`, {
                   error: error.message,
                   notificationType: item.metadata.notificationType,
+                  messageId: item.messageId,
                   totalRetries: item.retryCount
                 });
                 this.messageQueue.shift();
@@ -126,7 +136,8 @@ export class QueueManager {
                 logger.warn('Retrying message send', {
                   error: error.message,
                   retryCount: item.retryCount,
-                  notificationType: item.metadata.notificationType
+                  notificationType: item.metadata.notificationType,
+                  messageId: item.messageId
                 });
               }
             }
@@ -141,42 +152,48 @@ export class QueueManager {
   /**
    * Actually sends the message to Telegram
    */
-  private async sendNotification(message: string): Promise<void> {
+  private async sendNotification(item: QueueItem): Promise<void> {
     try {
-      const notificationType = MessageFormatter.extractNotificationType(message);
-      
       logger.info('Attempting to send Telegram notification', {
         groupId: this.groupId,
-        messageLength: message.length,
+        messageId: item.messageId,
         topicId: TELEGRAM_CONFIG.NOTIFICATION_TOPIC_ID,
-        notificationType
+        notificationType: item.metadata.notificationType
       });
 
       await this.bot.sendMessage(
         this.groupId,
-        message,
+        item.message.text,
         {
           ...TELEGRAM_CONFIG.MESSAGE_OPTIONS,
-          message_thread_id: TELEGRAM_CONFIG.NOTIFICATION_TOPIC_ID
+          message_thread_id: TELEGRAM_CONFIG.NOTIFICATION_TOPIC_ID,
+          reply_markup: item.message.reply_markup
         }
       );
 
+      // Mark message as sent in the store with proper notification type
+      messageStore.markAsSent(
+        item.messageId,
+        item.conversationId || null,
+        item.metadata.notificationType === 'NEW_CONVERSATION' ? 'NEW_CONVERSATION' :
+        item.metadata.notificationType === 'NEW_MESSAGE' ? 'NEW_MESSAGE' : 'SYSTEM'
+      );
+
       logger.info('Notification sent to Telegram group topic', {
+        messageId: item.messageId,
         topicId: TELEGRAM_CONFIG.NOTIFICATION_TOPIC_ID,
-        notificationType
+        notificationType: item.metadata.notificationType
       });
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-      const notificationType = MessageFormatter.extractNotificationType(message);
       
       const errorDetails = {
         error: errorMsg,
         groupId: this.groupId,
-        messageLength: message.length,
+        messageId: item.messageId,
         topicId: TELEGRAM_CONFIG.NOTIFICATION_TOPIC_ID,
-        notificationType,
-        messagePreview: message.substring(0, 100) + (message.length > 100 ? '...' : ''),
-        containsUnescapedChars: MessageFormatter.validateMessageFormat(message),
+        notificationType: item.metadata.notificationType,
+        messagePreview: item.message.text.substring(0, 100) + (item.message.text.length > 100 ? '...' : ''),
         isTelegramError: errorMsg.includes('ETELEGRAM'),
         hasMarkdownV2Issues: /Bad Request: can't parse entities/.test(errorMsg)
       };

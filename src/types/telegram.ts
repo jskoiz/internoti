@@ -5,11 +5,23 @@ export enum NotificationType {
 }
 
 export interface QueueItem {
-  message: string;
+  message: FormattedMessage;
   retryCount: number;
   retryAfter?: number;
+  messageId: string;
+  conversationId?: string;
   metadata: {
     notificationType: string;
+  };
+}
+
+export interface FormattedMessage {
+  text: string;
+  reply_markup?: {
+    inline_keyboard: Array<Array<{
+      text: string;
+      url: string;
+    }>>;
   };
 }
 
@@ -21,4 +33,7 @@ export interface ChatMessage {
   type: 'user' | 'contact' | 'admin' | 'lead';
   message: string;
   timestamp: string;
+  metadata?: {
+    conversationId: string;
+  };
 }

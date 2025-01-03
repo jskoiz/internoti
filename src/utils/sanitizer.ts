@@ -13,7 +13,10 @@ export interface IntercomPayload {
 export interface SanitizedPayload {
   userName: string;
   messageBody: string;
-  timestamp: string;
+  timestamp: {
+    formatted: string;
+    timeAgo: string;
+  };
   inboxUrl: string;
   rawContent: {
     id: string;
@@ -24,29 +27,24 @@ export interface SanitizedPayload {
 }
 
 /**
- * Sanitizes text for Telegram's MarkdownV2 format based on context
+ * Basic text cleanup without Markdown escaping
  */
-function sanitizeText(text: string, context: 'text' | 'url' | 'timestamp'): string {
+function sanitizeText(text: string): string {
   if (!text) return '';
 
-  // Common special characters that need escaping in MarkdownV2
-  const specialChars = /[_*[\]()~`>#+=|{}.!-]/g;
+  // Remove HTML tags and decode HTML entities
+  let sanitized = text
+    .replace(/<[^>]*>/g, '')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'");
 
-  switch (context) {
-    case 'url':
-      // URLs need careful escaping to remain clickable
-      // Only escape characters that would break the URL structure
-      return text.replace(/[[\]()~`>#+=|{}.!]/g, '\\$&');
-    
-    case 'timestamp':
-      // Timestamps need consistent escaping for readability
-      return text.replace(specialChars, '\\$&');
-    
-    case 'text':
-    default:
-      // General text needs full escaping
-      return text.replace(specialChars, '\\$&');
-  }
+  // Trim whitespace and normalize spaces
+  sanitized = sanitized.trim().replace(/\s+/g, ' ');
+
+  return sanitized;
 }
 
 /**
@@ -54,7 +52,7 @@ function sanitizeText(text: string, context: 'text' | 'url' | 'timestamp'): stri
  */
 function cleanMessageContent(message: string): string {
   // Remove HTML tags
-  const cleanMessage = message.replace(/<[^>]*>/g, '').trim();
+  const cleanMessage = sanitizeText(message).trim();
   
   // Truncate if too long
   return cleanMessage.length > 3000
@@ -65,8 +63,38 @@ function cleanMessageContent(message: string): string {
 /**
  * Format timestamp consistently
  */
-function formatTimestamp(timestamp: string): string {
-  return new Date(timestamp).toLocaleString();
+function formatTimestamp(timestamp: string): { formatted: string; timeAgo: string } {
+  const date = new Date(timestamp);
+  const now = new Date();
+  const diffInMinutes = Math.floor((now.getTime() - date.getTime()) / (1000 * 60));
+  
+  // Format time without seconds
+  const formatted = date.toLocaleString(undefined, {
+    year: 'numeric',
+    month: 'numeric',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true
+  });
+  
+  // Calculate time ago
+  let timeAgo: string;
+  if (diffInMinutes < 1) {
+    timeAgo = 'just now';
+  } else if (diffInMinutes === 1) {
+    timeAgo = '1 minute ago';
+  } else if (diffInMinutes < 60) {
+    timeAgo = `${diffInMinutes} minutes ago`;
+  } else if (diffInMinutes < 120) {
+    timeAgo = '1 hour ago';
+  } else if (diffInMinutes < 1440) {
+    timeAgo = `${Math.floor(diffInMinutes / 60)} hours ago`;
+  } else {
+    timeAgo = `${Math.floor(diffInMinutes / 1440)} days ago`;
+  }
+  
+  return { formatted, timeAgo };
 }
 
 /**
@@ -82,10 +110,10 @@ export function sanitizeIntercomMessage(raw: IntercomPayload): SanitizedPayload 
     
     // Create the sanitized payload
     const sanitized: SanitizedPayload = {
-      userName: sanitizeText(raw.name, 'text'),
-      messageBody: sanitizeText(cleanedMessage, 'text'),
-      timestamp: sanitizeText(formatTimestamp(raw.timestamp), 'timestamp'),
-      inboxUrl: sanitizeText(inboxUrl, 'url'),
+      userName: sanitizeText(raw.name),
+      messageBody: cleanedMessage,
+      timestamp: formatTimestamp(raw.timestamp),
+      inboxUrl: inboxUrl,
       rawContent: {
         id: raw.id,
         type: raw.type,
@@ -93,20 +121,6 @@ export function sanitizeIntercomMessage(raw: IntercomPayload): SanitizedPayload 
         email: raw.email
       }
     };
-
-    // Validate the sanitized content
-    const containsUnescapedChars = /[_*[\]()~`>#+=|{}.!-]/.test(
-      Object.values(sanitized)
-        .filter(v => typeof v === 'string')
-        .join('')
-    );
-
-    if (containsUnescapedChars) {
-      logger.warn('Potentially unescaped characters in sanitized content', {
-        messageId: raw.id,
-        userType: raw.type
-      });
-    }
 
     return sanitized;
   } catch (error) {
