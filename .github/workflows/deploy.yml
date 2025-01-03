@@ -7,7 +7,7 @@ on:
 env:
   AWS_REGION: us-east-1
   ECR_REPOSITORY: internoti
-  EC2_INSTANCE_ID: i-0d67a3d016a0e00c8
+  EC2_INSTANCE_ID: i-06a1790b81c1b5a0b
 
 permissions:
   id-token: write
@@ -37,8 +37,9 @@ jobs:
     - name: Configure AWS credentials
       uses: aws-actions/configure-aws-credentials@v4
       with:
-        role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+        role-to-assume: arn:aws:iam::715841341855:role/InternotiStack-GitHubActionsGitHubActionsRoleF6E4CD-3xgqe81OMKLl
         aws-region: ${{ env.AWS_REGION }}
+        audience: sts.amazonaws.com
 
     - name: Login to Amazon ECR
       id: login-ecr
