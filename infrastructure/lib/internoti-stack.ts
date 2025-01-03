@@ -50,6 +50,13 @@ export class InternotiStack extends cdk.Stack {
       effect: iam.Effect.ALLOW,
       actions: [
         'ecr:GetAuthorizationToken',
+      ],
+      resources: ['*'], // GetAuthorizationToken requires resource '*'
+    }));
+
+    role.addToPolicy(new iam.PolicyStatement({
+      effect: iam.Effect.ALLOW,
+      actions: [
         'ecr:BatchCheckLayerAvailability',
         'ecr:GetDownloadUrlForLayer',
         'ecr:BatchGetImage',
@@ -64,6 +71,13 @@ export class InternotiStack extends cdk.Stack {
       allowAllOutbound: true,
     });
 
+    // Allow SSH access
+    securityGroup.addIngressRule(
+      ec2.Peer.anyIpv4(),
+      ec2.Port.tcp(22),
+      'Allow SSH access from anywhere'
+    );
+
     // Create EC2 instance
     const instance = new ec2.Instance(this, 'InternotiInstance', {
       vpc,
@@ -72,9 +86,10 @@ export class InternotiStack extends cdk.Stack {
       },
       role,
       securityGroup,
+      keyName: 'internoti',
       instanceType: ec2.InstanceType.of(ec2.InstanceClass.T3, ec2.InstanceSize.MICRO),
       machineImage: new ec2.AmazonLinuxImage({
-        generation: ec2.AmazonLinuxGeneration.AMAZON_LINUX_2,
+        generation: ec2.AmazonLinuxGeneration.AMAZON_LINUX_2023,
       }),
       userData: ec2.UserData.forLinux(),
     });

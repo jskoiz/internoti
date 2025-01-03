@@ -52,7 +52,7 @@ export class GitHubActionsRole extends Construct {
         'ssm:GetCommandInvocation',
       ],
       resources: [
-        `arn:aws:ssm:${cdk.Stack.of(this).region}:${cdk.Stack.of(this).account}:document/AWS-RunShellScript`,
+        'arn:aws:ssm:*:*:document/AWS-RunShellScript',
         `arn:aws:ec2:${cdk.Stack.of(this).region}:${cdk.Stack.of(this).account}:instance/*`,
       ],
     }));
