@@ -1,24 +1,37 @@
 # Internoti
 
-A notification bridge between Intercom and Telegram. This service monitors Intercom for new customer chat messages and forwards them to a specified Telegram group.
+A Node.js-based notification bridge that connects Intercom customer chat messages to Telegram groups, enabling immediate team awareness of customer inquiries. Built with TypeScript and running as a containerized service on AWS.
 
-## Features
+## Core Features
 
-- Monitors Intercom for new customer messages
-- Sends formatted notifications to a Telegram group
-- Configurable polling interval
-- Comprehensive error handling and logging
-- TypeScript-based for type safety
+- Intercom webhook processing with duplicate detection
+- Message queue system with rate limiting and retries
+- SQLite-based message tracking and deduplication
+- Secure credential management via AWS Parameter Store
+- Containerized deployment with Docker
+- Infrastructure as Code using AWS CDK
+
+## Architecture
+
+```
+src/
+├── bot/              # Telegram bot and queue management
+├── config/           # Environment and configuration
+├── db/               # SQLite message store
+├── intercom/         # Intercom client and webhook handling
+├── types/           # TypeScript type definitions
+├── utils/           # Shared utilities
+└── webhook/         # Webhook server implementation
+```
 
 ## Prerequisites
 
-- Node.js (Latest LTS version)
-- npm or yarn
-- Intercom Access Token
-- Telegram Bot Token
-- Telegram Group ID
+- Node.js (Latest LTS)
+- Docker
+- AWS CLI configured with appropriate permissions
+- AWS CDK CLI (`npm install -g aws-cdk`)
 
-## Installation
+## Local Development Setup
 
 1. Clone the repository:
 ```bash
@@ -31,72 +44,96 @@ cd internoti
 npm install
 ```
 
-3. Create a `.env` file in the root directory with the following content:
-```env
-INTERCOM_ACCESS_TOKEN=your_intercom_token
-TELEGRAM_BOT_TOKEN=your_telegram_bot_token
-TELEGRAM_GROUP_ID=your_telegram_group_id
-LOG_LEVEL=info
-INTERCOM_POLL_INTERVAL=30000
+3. Create a local `.env` file:
+```bash
+cp .env.example .env
+# Edit .env with your credentials
 ```
 
-## Development
+Required environment variables:
+- `INTERCOM_TOKEN`: Your Intercom access token
+- `TELEGRAM_TOKEN`: Your Telegram bot token
+- `TELEGRAM_GROUP_ID`: Target Telegram group ID
 
-Start the development server with auto-reload:
+## Running the Application
+
+### Development Mode
 ```bash
 npm run dev
 ```
 
-## Building
-
-Build the TypeScript code:
+### Production Build
 ```bash
 npm run build
+npm run start
 ```
 
-## Production
-
-Start the production server:
+### Docker Build & Run
 ```bash
-npm start
+docker build -t internoti .
+docker run -d --name internoti \
+  --env-file .env \
+  internoti
 ```
 
-## Scripts
+## AWS Deployment
 
-- `npm run build` - Build the TypeScript code
-- `npm start` - Start the production server
-- `npm run dev` - Start development server with auto-reload
-- `npm run lint` - Run ESLint
-- `npm run format` - Format code with Prettier
-
-## Project Structure
-
-```
-src/
-├── bot/
-│   └── telegramBot.ts    # Telegram bot implementation
-├── intercom/
-│   └── intercomClient.ts # Intercom client implementation
-├── utils/
-│   └── logger.ts         # Logging utility
-└── index.ts              # Application entry point
+1. Configure AWS Parameters:
+```bash
+aws ssm put-parameter --name "/internoti/intercom-token" --type "SecureString" --value "your-token"
+aws ssm put-parameter --name "/internoti/telegram-token" --type "SecureString" --value "your-token"
+aws ssm put-parameter --name "/internoti/telegram-group-id" --type "SecureString" --value "your-group-id"
 ```
 
-## Error Handling
+2. Deploy infrastructure:
+```bash
+cd infrastructure
+npm install
+cdk deploy
+```
 
-The application includes comprehensive error handling:
-- Validation of environment variables
-- API error handling for both Intercom and Telegram
-- Graceful shutdown handling
-- Detailed error logging
+See [AWS_SETUP.md](AWS_SETUP.md) for detailed AWS configuration steps.
 
-## Logging
+## Maintenance
 
-Logs are written to:
-- Console (all levels)
-- error.log (error level)
-- combined.log (all levels)
+### Logs
+- CloudWatch Logs for production monitoring
+- Docker container logs: `docker logs internoti`
+- Local development logs in `logs/` directory
+
+### Database
+SQLite database is stored in the container at `/app/data/messages.db`
+- Backup: `docker cp internoti:/app/data/messages.db ./backup.db`
+- Cleanup old records: Automatic based on retention policy
+
+### Monitoring
+- CloudWatch basic monitoring enabled
+- Instance health checks via AWS EC2
+- API rate limit monitoring for both Intercom and Telegram
+
+## Security
+
+- All credentials stored in AWS Parameter Store
+- No direct SSH access - use AWS Systems Manager Session Manager
+- Security group restrictions for EC2 instance
+- IAM roles with minimal required permissions
+
+## Technical Considerations
+
+- Running on t3.micro EC2 instance (~$8-10/month)
+- Uses ES Modules (ESM) - imports must use `.js` extension
+- Automatic container restart on failure
+- Rate limiting for both Intercom and Telegram APIs
+- Message deduplication via SQLite
+
+## Contributing
+
+1. Ensure ESLint passes: `npm run lint`
+2. Format code: `npm run format`
+3. Follow TypeScript strict mode guidelines
+4. Maintain comprehensive documentation
+5. Use clear commit messages
 
 ## License
 
-ISC
+[Your License Here]
