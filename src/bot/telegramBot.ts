@@ -124,25 +124,9 @@ export class TelegramBot {
    */
   private async handleFaqCommand(msg: Message): Promise<void> {
     try {
-      const faqText = [ 
+      const faqText = [
         '*What I Do:*',
-        '• Forward Intercom messages to Telegram',
-        '• Handle new conversations and messages',
-        '• Process user information securely',
-        '• Manage message queuing and rate limits',
-        '',
-        '*Message Types:*',
-        '🔵 *New Conversations*',
-        '   • First messages from new users',
-        '   • Include user details when available',
-        '',
-        '🟢 *Ongoing Messages*',
-        '   • Messages in existing conversations',
-        '   • Threaded for easy tracking',
-        '',
-        '⚙️ *System Messages*',
-        '   • Connection status',
-        '   • Important system events'
+        '• Forward Intercom messages to Telegram'
       ].join('\n');
 
       await this.bot.sendMessage(
