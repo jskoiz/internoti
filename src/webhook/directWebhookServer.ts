@@ -1,12 +1,6 @@
 import express, { Request, Response } from "express";
-import crypto from "crypto";
 import { EventEmitter } from "events";
 import logger from "../utils/logger.js";
-
-// Extend Express Request to include rawBody
-interface WebhookRequest extends Request {
-  rawBody?: Buffer;
-}
 
 interface IntercomAuthor {
   type: string;
@@ -62,7 +56,6 @@ interface WebhookEventPayload {
 export class DirectWebhookServer extends EventEmitter {
   private server: express.Application;
   private port: number;
-  private webhookSecret: string;
 
   constructor() {
     super();
@@ -71,38 +64,15 @@ export class DirectWebhookServer extends EventEmitter {
     const port = process.env.WEBHOOK_PORT
       ? parseInt(process.env.WEBHOOK_PORT)
       : 3000;
-    const secret = process.env.INTERCOM_WEBHOOK_SECRET;
-
-    if (!secret) {
-      throw new Error(
-        "INTERCOM_WEBHOOK_SECRET is required for webhook verification",
-      );
-    }
-
+    
     this.port = port;
-    this.webhookSecret = secret;
     this.server = express();
 
     // Parse JSON bodies
-    this.server.use(
-      express.json({
-        verify: (req: WebhookRequest, _res: Response, buf: Buffer) => {
-          // Store raw body for signature verification
-          req.rawBody = buf;
-        },
-      }),
-    );
+    this.server.use(express.json());
 
     // Set up webhook endpoint
-    this.server.post(
-      "/webhook",
-      (req: WebhookRequest, res: Response, next: express.NextFunction) => {
-        this.verifyWebhookSignature(req, res, next);
-      },
-      (req: WebhookRequest, res: Response) => {
-        void this.handleWebhook(req, res);
-      },
-    );
+    this.server.post("/webhook", this.handleWebhook.bind(this));
   }
 
   /**
@@ -136,42 +106,9 @@ export class DirectWebhookServer extends EventEmitter {
   }
 
   /**
-   * Verify Intercom webhook signature
-   * https://developers.intercom.com/building-apps/docs/setting-up-webhooks#section-security
-   */
-  private verifyWebhookSignature(
-    req: WebhookRequest,
-    res: Response,
-    next: express.NextFunction,
-  ): void {
-    const signature = req.header("X-Hub-Signature");
-    if (!signature || !req.rawBody) {
-      logger.error("Missing webhook signature or raw body");
-      res.status(401).send("Missing signature or raw body");
-      return;
-    }
-
-    const computedSignature = crypto
-      .createHmac("sha1", this.webhookSecret)
-      .update(req.rawBody)
-      .digest("hex");
-
-    if (`sha1=${computedSignature}` !== signature) {
-      logger.error("Invalid webhook signature");
-      res.status(401).send("Invalid signature");
-      return;
-    }
-
-    next();
-  }
-
-  /**
    * Handle incoming webhook events
    */
-  private async handleWebhook(
-    req: WebhookRequest,
-    res: Response,
-  ): Promise<void> {
+  private async handleWebhook(req: Request, res: Response): Promise<void> {
     try {
       const event = req.body as IntercomWebhookEvent;
 

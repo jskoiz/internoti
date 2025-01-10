@@ -147,7 +147,7 @@ export class TelegramBot {
 
   private async verifyConnection(): Promise<void> {
     try {
-      const connectionMsg = MessageFormatter.formatSystemMessage('Internoti bot connected successfully');
+      const connectionMsg = MessageFormatter.formatSystemMessage('Connected to Intercom successfully');
       const messageOptions: SendMessageOptions = {
         parse_mode: TELEGRAM_CONFIG.MESSAGE_OPTIONS.parse_mode,
         disable_web_page_preview: TELEGRAM_CONFIG.MESSAGE_OPTIONS.disable_web_page_preview,
