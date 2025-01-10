@@ -1,15 +1,15 @@
 # Internoti
 
-A Node.js-based notification bridge that connects Intercom customer chat messages to Telegram groups, enabling immediate team awareness of customer inquiries. Built with TypeScript and running as a containerized service on AWS.
+A Node.js-based notification bridge that connects Intercom customer chat messages to Telegram groups, enabling immediate team awareness of customer inquiries. Built with TypeScript and running as a containerized service.
 
 ## Core Features
 
 - Intercom webhook processing with duplicate detection
 - Message queue system with rate limiting and retries
 - SQLite-based message tracking and deduplication
-- Secure credential management via AWS Parameter Store
+- Environment-based configuration
 - Containerized deployment with Docker
-- Infrastructure as Code using AWS CDK
+- Support for both regular and forum Telegram groups
 
 ## Architecture
 
@@ -28,8 +28,7 @@ src/
 
 - Node.js (Latest LTS)
 - Docker
-- AWS CLI configured with appropriate permissions
-- AWS CDK CLI (`npm install -g aws-cdk`)
+- A VPS with Docker installed
 
 ## Local Development Setup
 
@@ -51,9 +50,17 @@ cp .env.example .env
 ```
 
 Required environment variables:
-- `INTERCOM_TOKEN`: Your Intercom access token
-- `TELEGRAM_TOKEN`: Your Telegram bot token
+- `INTERCOM_ACCESS_TOKEN`: Your Intercom access token
+- `TELEGRAM_BOT_TOKEN`: Your Telegram bot token
 - `TELEGRAM_GROUP_ID`: Target Telegram group ID
+- `WEBHOOK_SECRET`: Secret for webhook validation
+- `NODE_ENV`: Set to 'production' in production
+- `LOG_LEVEL`: Logging level (error, warn, info, debug)
+
+Optional environment variables:
+- `TELEGRAM_TOPIC_ID`: Topic ID for forum groups
+- `WEBHOOK_URL`: Webhook URL (for development)
+- `WEBHOOK_PORT`: Port for webhook server (default: 3000)
 
 ## Running the Application
 
@@ -72,32 +79,63 @@ npm run start
 ```bash
 docker build -t internoti .
 docker run -d --name internoti \
+  --restart unless-stopped \
+  -p 3000:3000 \
   --env-file .env \
   internoti
 ```
 
-## AWS Deployment
+## VPS Deployment
 
-1. Configure AWS Parameters:
+### Manual Deployment
+
+1. Set up your VPS:
+   - Install Docker
+   - Configure firewall to allow port 3000
+   - Set up SSL/TLS termination (recommended)
+
+2. Create production environment file:
 ```bash
-aws ssm put-parameter --name "/internoti/intercom-token" --type "SecureString" --value "your-token"
-aws ssm put-parameter --name "/internoti/telegram-token" --type "SecureString" --value "your-token"
-aws ssm put-parameter --name "/internoti/telegram-group-id" --type "SecureString" --value "your-group-id"
+# On your VPS
+mkdir -p /opt/internoti
+nano /opt/internoti/.env
+# Add your production environment variables
 ```
 
-2. Deploy infrastructure:
+3. Pull and run the container:
 ```bash
-cd infrastructure
-npm install
-cdk deploy
+docker pull your-registry/internoti:latest
+docker run -d \
+  --name internoti \
+  --restart unless-stopped \
+  -p 3000:3000 \
+  --env-file /opt/internoti/.env \
+  your-registry/internoti:latest
 ```
 
-See [AWS_SETUP.md](AWS_SETUP.md) for detailed AWS configuration steps.
+### GitHub Actions Deployment
+
+The project includes automated deployment via GitHub Actions. To set it up:
+
+1. Add the following secrets to your GitHub repository:
+   - `VPS_HOST`: Your VPS hostname/IP
+   - `VPS_USERNAME`: SSH username
+   - `VPS_SSH_KEY`: SSH private key
+   - `INTERCOM_ACCESS_TOKEN`: Intercom access token
+   - `TELEGRAM_BOT_TOKEN`: Telegram bot token
+   - `TELEGRAM_GROUP_ID`: Telegram group ID
+   - `WEBHOOK_SECRET`: Webhook secret
+
+2. Push to main branch to trigger deployment
+
+## FAQ
+
+What I Do:
+• Forward Intercom messages to Telegram
 
 ## Maintenance
 
 ### Logs
-- CloudWatch Logs for production monitoring
 - Docker container logs: `docker logs internoti`
 - Local development logs in `logs/` directory
 
@@ -107,21 +145,22 @@ SQLite database is stored in the container at `/app/data/messages.db`
 - Cleanup old records: Automatic based on retention policy
 
 ### Monitoring
-- CloudWatch basic monitoring enabled
-- Instance health checks via AWS EC2
+- Container health monitoring
 - API rate limit monitoring for both Intercom and Telegram
 
 ## Security
 
-- All credentials stored in AWS Parameter Store
-- No direct SSH access - use AWS Systems Manager Session Manager
-- Security group restrictions for EC2 instance
-- IAM roles with minimal required permissions
+- Environment variables for sensitive configuration
+- No hardcoded credentials
+- Webhook validation
+- Regular security updates
+- SSL/TLS termination recommended
 
 ## Technical Considerations
 
-- Running on t3.micro EC2 instance (~$8-10/month)
 - Uses ES Modules (ESM) - imports must use `.js` extension
 - Automatic container restart on failure
 - Rate limiting for both Intercom and Telegram APIs
 - Message deduplication via SQLite
+- Stateless application design
+- Data persistence through Docker volumes (optional)## Test Deployment
