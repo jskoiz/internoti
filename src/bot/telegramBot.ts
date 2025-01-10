@@ -1,5 +1,5 @@
 import TelegramBotAPI from 'node-telegram-bot-api';
-import type { Message } from 'node-telegram-bot-api';
+import type { Message, SendMessageOptions } from 'node-telegram-bot-api';
 import logger from '../utils/logger.js';
 import { ChatMessage } from '../types/telegram.js';
 import { MessageFormatter } from './messageFormatter.js';
@@ -164,14 +164,21 @@ export class TelegramBot {
   private async verifyConnection(): Promise<void> {
     try {
       const connectionMsg = MessageFormatter.formatSystemMessage('Internoti bot connected successfully');
+      const messageOptions: SendMessageOptions = {
+        parse_mode: TELEGRAM_CONFIG.MESSAGE_OPTIONS.parse_mode,
+        disable_web_page_preview: TELEGRAM_CONFIG.MESSAGE_OPTIONS.disable_web_page_preview,
+        reply_markup: connectionMsg.reply_markup
+      };
+
+      // Only add message_thread_id if NOTIFICATION_TOPIC_ID is defined
+      if (TELEGRAM_CONFIG.NOTIFICATION_TOPIC_ID) {
+        messageOptions.message_thread_id = TELEGRAM_CONFIG.NOTIFICATION_TOPIC_ID;
+      }
+
       await this.bot.sendMessage(
         this.groupId,
         connectionMsg.text,
-        {
-          ...TELEGRAM_CONFIG.MESSAGE_OPTIONS,
-          message_thread_id: TELEGRAM_CONFIG.NOTIFICATION_TOPIC_ID,
-          reply_markup: connectionMsg.reply_markup
-        }
+        messageOptions
       );
       logger.info('Telegram bot initialized and connected to group', {
         groupId: this.groupId

@@ -1,4 +1,4 @@
-import TelegramBot from 'node-telegram-bot-api';
+import TelegramBot, { SendMessageOptions } from 'node-telegram-bot-api';
 import { QueueItem, ChatMessage, FormattedMessage } from '../types/telegram.js';
 import { TELEGRAM_CONFIG } from '../config/telegram.js';
 import { MessageFormatter } from './messageFormatter.js';
@@ -161,14 +161,21 @@ export class QueueManager {
         notificationType: item.metadata.notificationType
       });
 
+      const messageOptions: SendMessageOptions = {
+        parse_mode: TELEGRAM_CONFIG.MESSAGE_OPTIONS.parse_mode,
+        disable_web_page_preview: TELEGRAM_CONFIG.MESSAGE_OPTIONS.disable_web_page_preview,
+        reply_markup: item.message.reply_markup
+      };
+
+      // Only add message_thread_id if NOTIFICATION_TOPIC_ID is defined
+      if (TELEGRAM_CONFIG.NOTIFICATION_TOPIC_ID) {
+        messageOptions.message_thread_id = TELEGRAM_CONFIG.NOTIFICATION_TOPIC_ID;
+      }
+
       await this.bot.sendMessage(
         this.groupId,
         item.message.text,
-        {
-          ...TELEGRAM_CONFIG.MESSAGE_OPTIONS,
-          message_thread_id: TELEGRAM_CONFIG.NOTIFICATION_TOPIC_ID,
-          reply_markup: item.message.reply_markup
-        }
+        messageOptions
       );
 
       // Mark message as sent in the store with proper notification type

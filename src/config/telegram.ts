@@ -1,6 +1,6 @@
 export const TELEGRAM_CONFIG = {
-  // Topic ID for notifications in the Telegram group
-  NOTIFICATION_TOPIC_ID: 34,
+  // Topic ID for notifications in the Telegram group (optional)
+  NOTIFICATION_TOPIC_ID: process.env.TELEGRAM_TOPIC_ID ? parseInt(process.env.TELEGRAM_TOPIC_ID, 10) : undefined,
   
   // Retry settings
   MAX_RETRIES: 3,

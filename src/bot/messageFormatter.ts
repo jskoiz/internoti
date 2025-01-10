@@ -1,6 +1,5 @@
 import { sanitizeIntercomMessage } from '../utils/sanitizer.js';
 import { ChatMessage, NotificationType, FormattedMessage } from '../types/telegram.js';
-import { TELEGRAM_CONFIG } from '../config/telegram.js';
 import logger from '../utils/logger.js';
 
 export class MessageFormatter {
@@ -36,28 +35,14 @@ export class MessageFormatter {
       // Use the sanitizer to process the message (basic cleanup only)
       const sanitized = sanitizeIntercomMessage(chat);
 
-      // Get the appropriate icon and escape it
-      const icon = this.escapeMarkdown(this.getNotificationIcon(notificationType));
-      
-      // Prepare the notification type
-      const type = this.escapeMarkdown(notificationType.toString().replace(/_/g, ' '));
-
       // Escape all message components for MarkdownV2
       const userName = this.escapeMarkdown(sanitized.userName);
       const messageBody = this.escapeMarkdown(sanitized.messageBody);
-      const formattedTime = this.escapeMarkdown(sanitized.timestamp.formatted);
-      const timeAgo = this.escapeMarkdown(sanitized.timestamp.timeAgo);
-
-      // Get color based on notification type
-      const colorPrefix = notificationType === NotificationType.NEW_CONVERSATION ? '🟣' : '🔵';
 
       // Build formatted message object
       const formattedMessage: FormattedMessage = {
         text: [
-          `${colorPrefix} ${icon} *${type}*`,
-          `_${formattedTime} \\(${timeAgo}\\)_`,
-          '',
-          `*Name:*`,
+          `*Location:*`,
           userName,
           '',
           `*Message:*`,
@@ -65,7 +50,7 @@ export class MessageFormatter {
         ].join('\n'),
         reply_markup: {
           inline_keyboard: [[{
-            text: '👁️ View in Intercom',
+            text: 'View in Intercom',
             url: sanitized.inboxUrl
           }]]
         }
@@ -100,22 +85,15 @@ export class MessageFormatter {
   }
 
   /**
-   * Gets the appropriate icon for a notification type
-   */
-  private static getNotificationIcon(type: NotificationType): string {
-    return TELEGRAM_CONFIG.ICONS[type] || TELEGRAM_CONFIG.ICONS.SYSTEM;
-  }
-
-  /**
    * Extracts notification type from a formatted message
    */
   static extractNotificationType(message: string): NotificationType | 'UNKNOWN' {
-    // Handle escaped underscores in the message with new format
-    const match = message.match(/[🟣🔵] [💬🆕🤖] \*(NEW[ _]CONVERSATION|NEW[ _]MESSAGE|SYSTEM)\*/u);
-    if (!match) return 'UNKNOWN';
-    
-    // Remove escaping from the matched type
-    const type = match[1].replace(/[ _]/g, '_');
-    return type as NotificationType;
+    // Since we no longer include notification type in the message format,
+    // we'll determine type based on message structure
+    if (message.includes('*Location:*') && message.includes('*Message:*')) {
+      // All messages now follow the same format, default to NEW_MESSAGE
+      return NotificationType.NEW_MESSAGE;
+    }
+    return 'UNKNOWN';
   }
 }
